@@ -1,0 +1,203 @@
+
+import tkinter as mood
+from tkinter import filedialog, Text
+from tkinter import font
+from tkinter import colorchooser
+
+# Set variable for open file name
+global open_status_name
+open_status_name = False
+
+global selected
+selected = False
+
+root = mood.Tk()
+root.geometry("1200x800")
+
+root.title("This is Cindy's Home")
+
+label = mood.Label(root, text="This is Cindy's Home", bg="#FFCCCC", font=('Arial',25, "bold"))
+label.pack(fill='x',pady=5)
+
+toolbar_frame = mood.Frame(root)
+toolbar_frame.pack(fill="y", pady=20)
+
+frame = mood.Frame(root, relief='sunken',pady=5, borderwidth=5)
+
+
+
+def bold_it():
+    # Create our font
+    bold_font = font.Font(textBox, textBox.cget("font"))
+    bold_font.configure(weight="bold")
+
+    # Configure a tag
+    textBox.tag_configure("bold", font=bold_font)
+
+    # Define Current tags
+    current_tags = textBox.tag_names("sel.first")
+
+    # If statment to see if tag has been set
+    if "bold" in current_tags:
+        textBox.tag_remove("bold", "sel.first", "sel.last")
+    else:
+        textBox.tag_add("bold", "sel.first", "sel.last")
+
+
+# Italics Text
+def italics_it():
+    # Create our font
+    italics_font = font.Font(textBox, textBox.cget("font"))
+    italics_font.configure(slant="italic")
+
+    # Configure a tag
+    textBox.tag_configure("italic", font=italics_font)
+
+    # Define Current tags
+    current_tags = textBox.tag_names("sel.first")
+
+    # If statment to see if tag has been set
+    if "italic" in current_tags:
+        textBox.tag_remove("italic", "sel.first", "sel.last")
+    else:
+        textBox.tag_add("italic", "sel.first", "sel.last")
+
+
+# Change Selected Text Color
+def text_color():
+    # Pick a color
+    my_color = colorchooser.askcolor()[1]
+    if my_color:
+        # Create our font
+        color_font = font.Font(textBox, textBox.cget("font"))
+
+        # Configure a tag
+        textBox.tag_configure("colored", font=color_font, foreground=my_color)
+
+        # Define Current tags
+        current_tags = textBox.tag_names("sel.first")
+
+        # If statment to see if tag has been set
+        if "colored" in current_tags:
+            textBox.tag_remove("colored", "sel.first", "sel.last")
+        else:
+            textBox.tag_add("colored", "sel.first", "sel.last")
+
+canvas = mood.Canvas(frame, height=400, width=600)
+
+scrollbar = mood.Scrollbar(frame, orient="vertical", command=canvas.yview)
+scrollable_frame = mood.Frame(canvas)
+textBox: Text=mood.Text(scrollable_frame , height=400, width=600,  borderwidth=0, highlightthickness=0, relief='sunken', font=('Arial',12), selectbackground ='grey')
+
+
+scrollable_frame.bind(
+    "<Configure>",
+    lambda e: canvas.configure(
+        scrollregion=canvas.bbox("all")
+    )
+)
+
+canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+canvas.configure(yscrollcommand=scrollbar.set)
+
+frame.pack()
+scrollbar.pack(side="right", fill="y")
+textBox.pack(side="left", fill="both", expand=True)
+
+
+canvas.pack()
+
+
+
+def open_txt():
+    text_file = filedialog.askopenfilename(initialdir="C:/gui/", title="Open Text File",
+                                           filetypes=(("Text Files", "*.txt"),))
+    name = text_file
+    name = name.replace("C:/gui/", "")
+    name = name.replace(".txt", "")
+
+    text_file = open(text_file, 'r')
+    stuff = text_file.read()
+
+    textBox.insert(mood.END, stuff)
+    text_file.close()
+
+
+    root.title(f'{name} - Textpad')
+
+
+def save_txt():
+    text_file = filedialog.asksaveasfile(initialdir="C:/Users/cindy/Desktop", title="Save Text File",
+                                           filetypes=(("Text Files", "*.txt"),))
+
+    text_file.write(textBox.get(1.0, mood.END))
+
+# Open&Save Button
+open_button = mood.Button(root, text="Open", command=open_txt)
+open_button.place(relx=0.4, rely=0.75, anchor = "center")
+save_button = mood.Button(root, text="Save", command=save_txt)
+save_button.place(relx=0.6, rely=0.75, anchor = "center")
+
+
+# Bold Button
+bold_button = mood.Button(toolbar_frame, text="Bold", command=bold_it)
+bold_button.grid(row=0, column=0, padx=5, pady=5)
+
+
+# Italics Button
+italics_button = mood.Button(toolbar_frame, text="Italics", command=italics_it)
+italics_button.grid(row=0, column=1, padx=5, pady=5)
+
+
+
+# Text Color
+color_text_button = mood.Button(toolbar_frame, text="Text Color", command=text_color)
+color_text_button.grid(row=0, column=2, padx=5, pady=5)
+
+
+def change_fontsize():
+    font_size = int(spinbox1.get())
+    textBox.config(font=('verdana', font_size))
+
+spinbox1 = mood.Spinbox(toolbar_frame, from_=10, to=20,
+                        command=change_fontsize, font=('verdana', 12), width=5)
+spinbox1.grid(row=0, column=3, padx=5, pady=5)
+
+
+
+
+class Test(Text):
+
+    def __init__(self):
+        Text.__init__(self)
+        self.bind('<Control-c>', self.copy)
+        self.bind('<Control-x>', self.cut)
+        self.bind('<Control-v>', self.paste)
+
+    def copy(self, event=None):
+        self.clipboard_clear()
+        text = self.get("sel.first", "sel.last")
+        self.clipboard_append(text)
+
+    def cut(self, event):
+        self.copy()
+        self.delete("sel.first", "sel.last")
+
+    def paste(self, event):
+        text = self.selection_get(selection='CLIPBOARD')
+        self.insert('insert', text)
+
+if __name__ == '__main__':
+    Test()
+
+
+
+
+
+
+
+
+
+
+root.mainloop()
