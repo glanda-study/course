@@ -1,0 +1,480 @@
+import os
+import python_proxy
+import shutil
+import glob
+import subprocess
+
+from _file_compare import FileComparator, compare_str, create_excel_log_file
+from _util import NUtil, Is_Runtime_Ipy, generate_temp_path
+
+
+
+def compare_pdf(path1, path2, ignoreContent=None, logFile=None):
+    # Caution: DO NOT write anything into stdout.
+    # stdout is used to write result for IronPython.
+    if Is_Runtime_Ipy:
+        return _compare_pdf_ipy(path1, path2, ignoreContent, logFile)
+
+    return PdfTextComparator(path1, path2, ignoreContent, logFile).compare()
+
+def _compare_pdf_ipy(path1, path2, ignoreContent, logFile):
+    command_format = 'from QeTechLibrary.Keywords._pdf_compare import compare_pdf_with_file_arg; compare_pdf_with_file_arg(r"%s")'
+    return python_proxy.invoke(python_proxy.PYTHON, command_format, path1, path2, ignoreContent, logFile)
+
+def compare_pdf_with_file_arg(file):
+    python_proxy.execute_with_file_arg(compare_pdf, file)
+
+
+
+def compare_pdf_as_image(path1, path2, outputDir, gsPath='gs.bat',
+                         resolution=100, imageFormat='pnggray',
+                         otherGsSwitches=''):
+    # Caution: DO NOT write anything into stdout.
+    # stdout is used to write result for non-IronPython.
+    if not Is_Runtime_Ipy:
+        return _compare_pdf_as_image_non_ipy(path1, path2, outputDir, gsPath,
+                                             resolution, imageFormat,
+                                             otherGsSwitches)
+
+    pdf_image_converter = PdfImageConverter(gsPath, resolution, imageFormat,
+                                            otherGsSwitches)
+    return PdfImageComparator(path1, path2, pdf_image_converter, outputDir)\
+        .compare()
+
+def _compare_pdf_as_image_non_ipy(path1, path2, outputDir, gsPath, resolution,
+                                  imageFormat, otherGsSwitches):
+    command_format = 'from QeTechLibrary.Keywords._pdf_compare \
+    import _compare_pdf_as_image_with_file_arg;\
+    _compare_pdf_as_image_with_file_arg(r"%s")'
+    return python_proxy.invoke(python_proxy.IPY, command_format, path1, path2,
+                               outputDir, gsPath, resolution, imageFormat,
+                               otherGsSwitches)
+
+def _compare_pdf_as_image_with_file_arg(arg_file):
+    python_proxy.execute_with_file_arg(compare_pdf_as_image, arg_file)
+
+
+
+class PdfComparator(FileComparator):
+    FileNamePatterns = ['*.pdf']
+    LogFileHeader = [u'File1', u'File2', u'Result']
+
+    def __init__(self, path1, path2):
+        super(PdfComparator, self).__init__(path1, path2)
+
+    def compare(self, multiProcess=False):
+        self.multiProcess = multiProcess
+        return super(PdfComparator, self).compare()
+
+    def _record_unpaired_files(self, recordList, fileNames, result):
+        for fileName in fileNames:
+            file1 = os.path.join(self.directory1, fileName)
+            file2 = os.path.join(self.directory2, fileName)
+            recordList.append([file1, file2, result])
+
+    def _compare_paired_files(self):
+        def _record_result(result):
+            equal, file1, file2 = result
+            if equal:
+                self.equalPairs.append((file1, file2))
+                self.equalRecords.append([file1, file2, self.Equal])
+            else:
+                self.unequalPairs.append((file1, file2))
+                self.unequalRecords.append([file1, file2, self.Unequal])
+
+        def _single_process_mode():
+            for file1, file2 in self.pendingPairs:
+                _record_result(self.compare_pair(file1, file2))
+
+        def _multi_process_mode():
+            from multiprocessing import freeze_support, Pool
+            freeze_support()
+            pool = Pool()
+
+            for file1, file2 in self.pendingPairs:
+                pool.apply_async(pair_compare_wrapper,
+                                 args=(self, file1, file2),
+                                 callback=_record_result)
+
+            pool.close()
+            pool.join()
+
+        if self.multiProcess:
+            _multi_process_mode()
+        else:
+            _single_process_mode()
+
+
+
+class PdfTextComparator(PdfComparator):
+    """Compare text in PDF files."""
+
+    def __init__(self, path1, path2, ignoreContent=None, logFile=None):
+        super(PdfTextComparator, self).__init__(path1, path2)
+        self.ignoreContent = ignoreContent
+        self.logFile, self.logFileMode = self._parse_log_file(logFile)
+
+    def compare_pair(self, file1, file2):
+        """Use pair_compare_wrapper(), if you want to call it in multiprocessing.
+        Because it does NOT support instance method.
+        """
+        def _generate_result(equal):
+            return (equal, file1, file2)
+
+        if file1 == file2:
+            return _generate_result(True)
+
+        with open(file1, 'rb') as fp1, open(file2, 'rb') as fp2:
+            from StringIO import StringIO
+            stream1 = StringIO()
+            stream2 = StringIO()
+            from pdfminer.pdfinterp import\
+                PDFResourceManager, PDFPageInterpreter
+            resource_manager1 = PDFResourceManager()
+            resource_manager2 = PDFResourceManager()
+
+            from pdfminer.converter import TextConverter
+            device1 = TextConverter(resource_manager1, stream1)
+            device2 = TextConverter(resource_manager2, stream2)
+
+            interpreter1 = PDFPageInterpreter(resource_manager1, device1)
+            interpreter2 = PDFPageInterpreter(resource_manager2, device2)
+
+            from pdfminer.pdfpage import PDFPage
+            from pdfminer.pdfdocument import PDFTextExtractionNotAllowed
+            import itertools
+            try:
+                for page1, page2 in itertools.izip_longest(PDFPage.get_pages(fp1), PDFPage.get_pages(fp2)):
+                    if page1 is None or page2 is None:
+                        return _generate_result(False)
+                    else:
+                        interpreter1.process_page(page1)
+                        interpreter2.process_page(page2)
+                        if not compare_str(stream1.getvalue().decode('utf-8'),
+                                           stream2.getvalue().decode('utf-8'),
+                                           self.ignoreContent):
+                            return _generate_result(False)
+            except PDFTextExtractionNotAllowed:
+                return _generate_result(False)
+        return _generate_result(True)
+
+    def _create_log_file(self):
+        from _util import create_file_utf8
+        with create_file_utf8(self.logFile, self.logFileMode) as fp:
+            import csv
+            csv_writer = csv.writer(fp)
+
+            # 1. If mode is NOT append or there's no header in log file,
+            #   then write header into log file.
+            # 2. If file size not larger than 3, consider it has no header.
+            #   Use '3' instead of '0' for BOM UTF8 (whose size is 3).
+            if not self.logFileMode.startswith('a') \
+                    or os.stat(self.logFile).st_size <= 3:
+                csv_writer.writerow(self.LogFileHeader)
+
+            encoded_results = [[field.encode('utf8') for field in record]
+                               for record
+                               in self._generate_log_file_rows(with_header=False)]
+
+            csv_writer.writerows(encoded_results)
+
+        return self.logFile
+
+    @staticmethod
+    def _parse_log_file(logFile):
+        """Get actual log file path and mode for openning log file."""
+        return (logFile[0:-7], 'ab') \
+            if logFile.endswith(u'*append') \
+            else (logFile, 'wb')
+
+
+
+class PdfImageComparator(PdfComparator):
+    """Compare PDF as image."""
+
+    LogFileName = "CompareLog.xlsx"
+    LogFileHeader = [u'ActualFolder', u'BaseFolder', u'FileName', u'Result', u'ResultPath', u'BasePath', u'Comment']
+    ResultColumnIndex = 3
+    LinkColumnIndexs = [0, 1, 4, 5]
+
+    def __init__(self, path1, path2, pdfImageConverter, outputDir):
+        super(PdfImageComparator, self).__init__(path1, path2)
+        self.pdf_image_converter = pdfImageConverter
+        self.output_dir, self.need_clear_output_dir, self.logFile, \
+            self.isAppendLog = self._parse_output_dir(outputDir)
+
+        # create output directory if need
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
+    def _record_unpaired_files(self, recordList, fileNames, result):
+        for fileName in fileNames:
+            comment = self._get_result_comment(result)
+            recordList.append([self.directory2, self.directory1, fileName, result, '', '', comment])
+
+    def _compare_paired_files(self):
+        success, comment = self._clear_output_dir_if_need()
+        if not success:
+            self.unequalRecords.append(
+                [self.directory2, self.directory1, 'N/A', self.Unequal,
+                 '', 'N/A', comment])
+
+        for file1, file2 in self.pendingPairs:
+            result = SinglePairComparator(
+                file1, file2, self.pdf_image_converter, self.output_dir).compare()
+
+            file_name2 = os.path.basename(file2)
+            if result.is_equal:
+                self.equalRecords.append(
+                    [self.directory2, self.directory1, file_name2, self.Equal,
+                     '', file1, ''])
+            else:
+                for diff_img, comment in result.diff_page_results:
+                    self.unequalRecords.append(
+                        [self.directory2, self.directory1, file_name2,
+                         self.Unequal, diff_img, file1, comment])
+
+    def _clear_output_dir_if_need(self):
+        if self.need_clear_output_dir:
+            # delete all files and folders except the log file
+            log_file_l = self.logFile.lower()
+            try:
+                for path in glob.glob(os.path.join(self.output_dir, '*')):
+                    if os.path.isdir(path):
+                        shutil.rmtree(path)
+                    elif os.path.isfile(path):
+                        if path.lower() == log_file_l:
+                            # no need to delete log file,
+                            # and it must not be deleted if log file mode is append
+                            continue
+                        else:
+                            os.remove(path)
+            except Exception, e:
+                return False, str(e)
+        return True, None
+
+    def _create_log_file(self):
+        create_excel_log_file(
+            self.logFile, self._generate_log_file_rows(),
+            self.ResultColumnIndex, self.LinkColumnIndexs, self.isAppendLog)
+        return self.logFile
+
+    @staticmethod
+    def _parse_output_dir(output_dir):
+        """Get actual output directory and log file path and relevant result mode.
+        return (output_dir, need_clear_output_dir, log_file, log_file_mode)
+        """
+        if output_dir.endswith(u'*append'):
+            output_dir = os.path.abspath(output_dir[0:-7])
+            need_clear_output_dir = False
+            is_append_log = True
+        else:
+            output_dir = os.path.abspath(output_dir)
+            need_clear_output_dir = True
+            is_append_log = False
+
+        return (output_dir,
+                need_clear_output_dir,
+                os.path.join(output_dir, PdfImageComparator.LogFileName),
+                is_append_log)
+
+class SinglePairComparator(object):
+
+    OutputImageFileNameFormat = "%s_%%d%s"
+    ImageConvertFailFormat = 'PDF to image conversion fail {file: "%s"; comment:"%s"}.'
+
+    def __init__(self, file1, file2, pdfImageConverter, outputDir):
+        self.file1 = file1
+        self.file2 = file2
+        self.pdf_image_converter = pdfImageConverter
+        self.output_dir = outputDir
+        self.img_dir1 = ''
+        self.img_path_format1 = ''
+        self.img_dir2 = ''
+        self.img_path_format2 = ''
+
+    def compare(self):
+        result = SinglePairResult()
+
+        if self.file1 == self.file2:
+            return result
+
+        self.pdf_info1 = NUtil.PdfInfoParser.GetPdfInfo(self.file1)
+        self.pdf_info2 = NUtil.PdfInfoParser.GetPdfInfo(self.file2)
+        page_count1 = len(self.pdf_info1.Pages)
+        page_count2 = len(self.pdf_info2.Pages)
+
+        # compare pages
+        min_page_count = min(page_count1, page_count2)
+        if min_page_count > 0:
+            success, comment = self._prepare_img()
+            if not success:
+                result.add_diff_page_result('', comment)
+            else:
+                for i in range(min_page_count):
+                    is_equal, diff_page_img, comment \
+                        = self._compare_page(i + 1)
+                    if not is_equal:
+                        result.add_diff_page_result(diff_page_img, comment)
+            self._clear_img_dir()
+
+        # add excess or missing pages to result
+        if page_count1 < page_count2:
+            for i in range(min_page_count + 1, page_count2 + 1):
+                result.add_extra_page_result(i)
+        elif page_count1 > page_count2:
+            for i in range(min_page_count + 1, page_count1 + 1):
+                result.add_miss_page_result(i)
+
+        return result
+
+    def _compare_page(self, pageIndex):
+        """pageIndex: 1-based."""
+        # if page size no equal, do not compare images
+        page_info1 = self.pdf_info1.Pages[pageIndex - 1]
+        page_info2 = self.pdf_info2.Pages[pageIndex - 1]
+        if not page_info1.IsPageSizeEqual(page_info2):
+            return (False, '',
+                    SinglePairResult.get_diff_page_size_comment(
+                        pageIndex, page_info1.Width_Inch,
+                        page_info1.Height_Inch, page_info2.Width_Inch,
+                        page_info2.Height_Inch))
+
+        img_path1 = self._get_page_image_path(self.img_path_format1, pageIndex)
+        img_path2 = self._get_page_image_path(self.img_path_format2, pageIndex)
+
+        # move image2 to output dir
+        compared_img_path = os.path.join(
+            self.output_dir, os.path.basename(img_path2))
+        shutil.move(img_path2, compared_img_path)
+
+        # assume size of images are equal now
+        if not NUtil.ImageComparator.Compare(img_path1, compared_img_path):
+            # two images are equal
+            os.remove(compared_img_path)
+            return True, None, None
+        else:
+            return (False, compared_img_path, SinglePairResult.PageContentUnequal)
+
+    def _prepare_img(self):
+        # convert file1 to image
+        item1, item2 = self._convert_pdf_to_img(self.file1)
+        if not item1:
+            return (False, self.ImageConvertFailFormat % (self.file1, item2))
+        else:
+            self.img_dir1 = item1
+            self.img_path_format1 = item2
+
+        # convert file2 to image
+        item1, item2 = self._convert_pdf_to_img(self.file2)
+        if not item1:
+            return (False, self.ImageConvertFailFormat % (self.file2, item2))
+        else:
+            self.img_dir2 = item1
+            self.img_path_format2 = item2
+
+        return True, None
+
+    def _clear_img_dir(self):
+        """Clear temporary folder and image files."""
+        if os.path.exists(self.img_dir1):
+            shutil.rmtree(self.img_dir1)
+        if os.path.exists(self.img_dir2):
+            shutil.rmtree(self.img_dir2)
+
+    def _convert_pdf_to_img(self, pdfFile):
+        img_dir = generate_temp_path()
+        os.makedirs(img_dir)
+        img_path_format = self._get_image_output_path_format(
+            img_dir, os.path.splitext(os.path.basename(pdfFile))[0])
+        success, comment = self.pdf_image_converter.convert(
+            pdfFile, img_path_format)
+        return (img_dir, img_path_format) if success else (False, comment)
+
+    def _get_image_output_path_format(self, outputDir, prefixFileName):
+        return os.path.join(
+            outputDir,
+            self.OutputImageFileNameFormat % (
+                prefixFileName,
+                self.pdf_image_converter.get_image_extension()))
+
+    @staticmethod
+    def _get_page_image_path(imagePathFormat, pageIndex):
+        return imagePathFormat % pageIndex
+
+class SinglePairResult(object):
+    """Comparison result of two PDF files."""
+
+    PageSizeUnequalFormat = "Page Size Unequal (uncompared) (%s,%sx%s,%sx%s)"
+    PageContentUnequal = "Page Content Unequal"
+    ExtraPageFormat = "Excess Page (%s)"
+    MissPageFormat = "Miss Page (%s)"
+
+    def __init__(self):
+        self.diff_page_results = []
+
+    @property
+    def is_equal(self):
+        return not self.diff_page_results
+
+    def add_diff_page_result(self, diffPageImg, comment):
+        self.diff_page_results.append((diffPageImg, comment))
+
+    def add_extra_page_result(self, page_index):
+        """page_index: 1-based."""
+        self.diff_page_results.append(('', self.ExtraPageFormat % page_index))
+
+    def add_miss_page_result(self, page_index):
+        """page_index: 1-based."""
+        self.diff_page_results.append(('', self.MissPageFormat % page_index))
+
+    @staticmethod
+    def get_diff_page_size_comment(page_index, page_width1, page_height1,
+                                   page_width2, page_height2):
+        """page_index: 1-based."""
+        return SinglePairResult.PageSizeUnequalFormat \
+            % (page_index, page_width1, page_height1, page_width2, page_height2)
+
+class PdfImageConverter(object):
+
+    CommandFormat = u'%s -dQUIET -dNOPROMPT -dBATCH -dNOPAUSE %s -sDEVICE=%s -r%s -sOutputFile="%s" "%s"'
+    PngFormats = ['png16', 'png16m', 'png256', 'pngalpha', 'pnggray', 'pngmono']
+    JpegFormats = ['jpeg', 'jpegcmyk', 'jpeggray']
+    BmpFormats = ['bmp16', 'bmp16m', 'bmp256', 'bmp32b', 'bmpgray', 'bmpmono', 'bmpsep1', 'bmpsep8']
+
+    def __init__(self, gsPath, resolution, imageFormat, otherGsSwitches):
+        self.gs_path = gsPath
+        self.resolution = resolution
+        self.image_format = imageFormat
+        self.additional_switches = otherGsSwitches
+
+    def convert(self, pdfFile, outputFile):
+        cmd = self.CommandFormat % (self.gs_path, self.additional_switches,
+                                    self.image_format, self.resolution,
+                                    outputFile, pdfFile)
+        start_info = subprocess.STARTUPINFO()
+        start_info.dwFlags = subprocess.STARTF_USESHOWWINDOW
+        start_info.wShowWindow = subprocess.SW_HIDE
+        p = subprocess.Popen(cmd, startupinfo=start_info,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        rc = p.wait()
+        return (rc == 0, out + err)
+
+    def get_image_extension(self):
+        if self.image_format in self.PngFormats:
+            return '.png'
+        elif self.image_format in self.JpegFormats:
+            return '.jpg'
+        elif self.image_format in self.BmpFormats:
+            return '.bmp'
+        else:
+            return ''
+
+
+
+def pair_compare_wrapper(comparator, file1, file2):
+    """Used for multiprocessing.Pool.apply_async.
+    Because it dose NOT support instance method.
+    """
+    return comparator.compare_pair(file1, file2)
