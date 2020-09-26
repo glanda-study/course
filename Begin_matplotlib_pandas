@@ -1,0 +1,24 @@
+import matplotlib.pyplot as plt
+import pandas as pd
+
+
+pf = pd.read_csv('/Users/cindy/Desktop/my thing/course material/Ex_Files_Python_Data_Science_EssT_Pt_1/Exercise Files/Data/mtcars.csv')
+
+print(pf.dtypes)
+
+
+pd.set_option("display.max_columns", 30)
+pd.set_option('display.width', 1000)
+print(pf)
+print(pf.describe())
+print(pf.median())
+
+for data in pf:
+    plt.scatter(data[0], data[1])
+
+plt.title("MT Cars")
+plt.xlabel("Average Temperature of SAITAMA")
+plt.ylabel("Average Temperature of IWATE")
+plt.grid()
+
+plt.show()
