@@ -1,0 +1,33 @@
+
+#defind the viewtree
+my_tree['columns']=('Date','High','Low','Open','Close','Volume','Adj Close')
+
+#format the viewtree
+my_tree.column("#0", width=0, stretch="no")
+my_tree.column("Date", anchor="w", width=140)
+my_tree.column("High", anchor="w", width=140)
+my_tree.column("Low", anchor="w", width=140)
+my_tree.column("Open", anchor="w", width=140)
+my_tree.column("Close", anchor="w", width=140)
+my_tree.column("Volume", anchor="w", width=140)
+my_tree.column("Adj Close", anchor="w", width=140)
+
+# Create Headings for the viewtree
+my_tree.heading("#0", text="", anchor="w")
+my_tree.heading("Date", text="Date", anchor="w")
+my_tree.heading("High", text="Hight", anchor="w")
+my_tree.heading("Low", text="Low", anchor="w")
+my_tree.heading("Open", text="Open", anchor="w")
+my_tree.heading("Close", text="Close", anchor="w")
+my_tree.heading("Volume", text="Volume", anchor="w")
+my_tree.heading("Adj Close", text="Adj Close", anchor="w")
+
+
+def my_tree_insert():
+    i=1
+    for i in range(df.index):
+      my_tree.getint('', 'end',
+                     value=(df['Date'][i+2], df['High'][i], df['Low'][i], df['Open'][i], df['Open'][i], df['Close'][i], df['Volume'][i], df['Adj Close'][i]))
+
+
+my_tree.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
