@@ -25,17 +25,19 @@ class Scr():
         end = dt.datetime(2020, 1, 10)
         symbol = ['AAPL']
         pd.set_option('display.max_columns', 100)
-        pd.set_option('max_colwidth', 10)
+        pd.set_option('max_colwidth', 17)
         pd.set_option('precision', 3)
-        pd.set_option("display.colheader_justify", "center")
+        #pd.set_option("display.colheader_justify", "center")
 
         df = web.DataReader(symbol,'yahoo', start, end)
-        mydata = pd.DataFrame(df)
+        df.columns=['  Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume']
+        print(df)
+
 
 
         self.frame_content = ttk.Frame(frame_text, height=1000, width=1000)
-        self.frame_content.pack(padx=20, pady=10)
-        ttk.Label(self.frame_content, text=mydata, foreground='', font=('Arial', 12, 'bold')).grid(row=0, column=0, padx=10,
+        self.frame_content.pack(padx=30, pady=10)
+        ttk.Label(self.frame_content, text=df, foreground='', font=('Arial', 15, 'bold')).grid(row=0, column=0, padx=10,
                                                                                               sticky='sw')
 
 
