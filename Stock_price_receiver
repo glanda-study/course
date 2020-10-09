@@ -16,6 +16,8 @@ frame_button=tk.Frame()
 frame_button.pack(pady=3)
 
 
+
+
 class Scr():
 
     def __init__(self, frame_text):
