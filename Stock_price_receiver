@@ -49,8 +49,8 @@ def data():
     start = date1
     end = date2
     symbol = ['AAPL']
-    pd.set_option('display.max_columns', 100)
-    pd.set_option('max_colwidth', 16)
+    pd.set_option('display.max_columns', 9)
+    pd.set_option('max_colwidth', 25)
     pd.set_option('precision', 2)
     pd.set_option("display.colheader_justify", "center")
 
@@ -59,7 +59,7 @@ def data():
 
 
 
-    ttk.Label(frame_text, text=df, foreground='', font=('Arial', 13, 'bold')).grid(row=0, column=0, padx=10,
+    ttk.Label(frame_text, text=df, foreground='', font=('Arial', 13, 'bold')).grid(row=50, column=0, padx=50,
                                                                                               sticky='we')
 
 button1 = tk.Button(root, text='Click', command=data)
