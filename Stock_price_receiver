@@ -21,8 +21,11 @@ date_entry1=tk.Entry(root)
 canvas1.create_window(50, 50, window=date_entry1)
 date_entry2=tk.Entry(root)
 canvas1.create_window(50, 80, window=date_entry2)
+stock_code=tk.Entry(root)
+canvas1.create_window(50, 110, window=stock_code)
 
-frame_text=ttk.Frame(root, height=1000, width=1000)
+
+frame_text=ttk.Frame(root, height=500, width=1000)
 frame_text.pack()
 
 
@@ -34,6 +37,7 @@ def data():
     date_2 = date_entry2.get()
     year, month, day = map(int, date_2.split('-'))
     date2 = dt.datetime(year, month, day)
+    stock = stock_code.get()
 
     # dt.year1, dt.month1, dt.day1 = map(int, x1.split('-'))
     #
@@ -48,14 +52,14 @@ def data():
 # end = dt.datetime(year2, month2, day2)
     start = date1
     end = date2
-    symbol = ['AAPL']
+    symbol = stock
     pd.set_option('display.max_columns', 9)
-    pd.set_option('max_colwidth', 25)
+    pd.set_option('max_colwidth', 30)
     pd.set_option('precision', 2)
     pd.set_option("display.colheader_justify", "center")
 
     df = web.DataReader(symbol,'yahoo', start, end)
-    df.columns=['Adj Close', 'Close', 'High', 'Low',  'Open', 'Volume']
+    df.columns=['High', 'Low',  'Open', 'Close', 'Volume', 'Adj Close']
 
 
 
@@ -63,7 +67,7 @@ def data():
                                                                                               sticky='we')
 
 button1 = tk.Button(root, text='Click', command=data)
-canvas1.create_window(50, 110, window=button1)
+canvas1.create_window(50, 140, window=button1)
 
 def main():
     data_entry()
@@ -71,6 +75,9 @@ def main():
 
 root.mainloop()
 
+
+
+if __name__ == "__main__": main()
 
 
 if __name__ == "__main__": main()
