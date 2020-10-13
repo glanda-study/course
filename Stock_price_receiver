@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, Tk
+from tkinter import ttk, Tk, Canvas
 import datetime as dt
 # import matplotlib.pyplot as plt
 # from matplotlib import style
@@ -7,52 +7,70 @@ import pandas as pd
 from pandas_datareader import data as web
 
 
+
+
 root=tk.Tk()
 root.title("Stock Price Receiver")
 root.geometry("1500x1000")
-frame_text=tk.Frame(height=1000, width=1000)
 
-frame_button=tk.Frame()
-frame_button.pack(pady=3)
-
+canvas1 = tk.Canvas(root, width=100, height=150)
+canvas1.pack()
 
 
+date_entry1=tk.Entry(root)
+canvas1.create_window(50, 50, window=date_entry1)
+date_entry2=tk.Entry(root)
+canvas1.create_window(50, 80, window=date_entry2)
 
-class Scr():
-
-    def __init__(self, frame_text):
-
-
-        start = dt.datetime(2020, 1, 1)
-        end = dt.datetime(2020, 1, 10)
-        symbol = ['AAPL']
-        pd.set_option('display.max_columns', 100)
-        pd.set_option('max_colwidth', 15)
-        pd.set_option('precision', 2)
-        #pd.set_option("display.colheader_justify", "center")
-
-        df = web.DataReader(symbol,'yahoo', start, end)
-        df.columns=['      Adj Close', '   Close', '  High', '  Low', '  Open', '  Volume']
-        print(df)
+frame_text=ttk.Frame(root, height=1000, width=1000)
+frame_text.pack()
 
 
+def data():
 
-        self.frame_content = ttk.Frame(frame_text, height=1000, width=1000)
-        self.frame_content.pack(padx=10, pady=10)
-        ttk.Label(self.frame_content, text=df, foreground='', font=('Arial', 13, 'bold')).grid(row=0, column=0, padx=10,
-                                                                                              sticky='e')
+    date_1= date_entry1.get()
+    year, month, day = map(int, date_1.split('-'))
+    date1 = dt.datetime(year, month, day)
+    date_2 = date_entry2.get()
+    year, month, day = map(int, date_2.split('-'))
+    date2 = dt.datetime(year, month, day)
+
+    # dt.year1, dt.month1, dt.day1 = map(int, x1.split('-'))
+    #
+    # dt.year2, dt.month2, dt.day2 = map(int, x2.split('-'))
 
 
 
 
 
 
+# start = dt.datetime(year1, month1, day1)
+# end = dt.datetime(year2, month2, day2)
+    start = date1
+    end = date2
+    symbol = ['AAPL']
+    pd.set_option('display.max_columns', 100)
+    pd.set_option('max_colwidth', 16)
+    pd.set_option('precision', 2)
+    pd.set_option("display.colheader_justify", "center")
 
+    df = web.DataReader(symbol,'yahoo', start, end)
+    df.columns=['Adj Close', 'Close', 'High', 'Low',  'Open', 'Volume']
+
+
+
+    ttk.Label(frame_text, text=df, foreground='', font=('Arial', 13, 'bold')).grid(row=0, column=0, padx=10,
+                                                                                              sticky='we')
+
+button1 = tk.Button(root, text='Click', command=data)
+canvas1.create_window(50, 110, window=button1)
 
 def main():
+    data_entry()
+    data()
 
-    scr = Scr(root)
-    root.mainloop()
+root.mainloop()
+
 
 
 if __name__ == "__main__": main()
